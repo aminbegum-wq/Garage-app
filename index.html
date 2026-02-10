@@ -3,15 +3,97 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Garage Profit Pilot</title>
-    
+    <title>Profit Pilot</title>
     <meta name="mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-capable" content="yes">
-    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="theme-color" content="#000000">
-
     <link rel="icon" type="image/png" href="icon.png">
     <link rel="apple-touch-icon" href="icon.png">
-
     <style>
-        /* ... (The rest of your CSS stays exactly the same) ... */
+        :root { --bg: #000000; --orange: #FF8C00; --red: #FF3B30; --green: #4CD964; --dark: #1C1C1E; --text: #FFFFFF; }
+        body { background: var(--bg); color: var(--text); font-family: sans-serif; display: flex; flex-direction: column; align-items: center; padding: 20px; margin: 0; height: 100vh; overflow: hidden; }
+        .weekly-tracker { display: flex; gap: 8px; margin: 10px 0 20px 0; }
+        .day-circle { width: 45px; height: 45px; border-radius: 50%; background: var(--dark); border: 2px solid #333; display: flex; align-items: center; justify-content: center; font-size: 10px; font-weight: bold; }
+        .day-circle.met { background: var(--green); color: #000; border-color: var(--green); }
+        .day-circle.failed { background: var(--red); color: #fff; border-color: var(--red); }
+        .main-container { position: relative; width: 280px; height: 280px; display: flex; align-items: center; justify-content: center; }
+        #progress-ring { position: absolute; transform: rotate(-90deg); }
+        .center-circle { width: 220px; height: 220px; border-radius: 50%; background: var(--red); display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; z-index: 2; transition: background 0.5s; }
+        .center-circle.met { background: var(--green); color: #000; }
+        .controls { display: flex; gap: 15px; width: 100%; max-width: 400px; margin-top: 30px; }
+        button { flex: 1; padding: 20px; border-radius: 15px; border: none; font-weight: 800; font-size: 16px; cursor: pointer; }
+        .btn-sale { background: var(--green); color: #000; }
+        .btn-cost { background: var(--red); color: #fff; }
+        .report-actions { display: flex; flex-direction: column; width: 100%; max-width: 400px; gap: 10px; margin-top: 20px; }
+        .btn-report { background: transparent; border: 1px solid var(--orange); color: var(--orange); padding: 12px; }
+        .btn-email { background: var(--orange); color: #000; padding: 12px; }
+        h1 { margin: 0; font-size: 38px; }
+    </style>
+</head>
+<body>
+    <div class="weekly-tracker">
+        <div class="day-circle" id="day-1">Mon</div>
+        <div class="day-circle" id="day-2">Tue</div>
+        <div class="day-circle" id="day-3">Wed</div>
+        <div class="day-circle" id="day-4">Thu</div>
+        <div class="day-circle" id="day-5">Fri</div>
+        <div class="day-circle" id="day-6">Sat</div>
+    </div>
+    <div class="main-container">
+        <svg id="progress-ring" width="280" height="280">
+            <circle id="bar" stroke="#FF8C00" stroke-width="12" fill="transparent" r="130" cx="140" cy="140" stroke-dasharray="816.8" stroke-dashoffset="816.8" stroke-linecap="round"/>
+        </svg>
+        <div class="center-circle" id="targetCircle">
+            <span style="font-size:11px; font-weight:600; opacity:0.8;">REMAINING TARGET</span>
+            <h1 id="targetDisplay">£380</h1>
+        </div>
+    </div>
+    <div class="controls">
+        <button class="btn-sale" onclick="handleSale()">+ SALE</button>
+        <button class="btn-cost" onclick="handleCost()">+ COST</button>
+    </div>
+    <div class="report-actions">
+        <button class="btn-report" onclick="generateReport()">SUMMARY</button>
+        <button class="btn-email" onclick="emailReport()">EMAIL REPORT</button>
+    </div>
+    <script>
+        const BASE_TARGET = 380;
+        function getWk(d) { d = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate())); d.setUTCDate(d.getUTCDate() + 4 - (d.getUTCDay()||7)); var s = new Date(Date.UTC(d.getUTCFullYear(),0,1)); return Math.ceil((((d-s)/86400000)+1)/7); }
+        let data = JSON.parse(localStorage.getItem('garageData'));
+        const wk = getWk(new Date());
+        if (!data || data.week !== wk) { data = { week: wk, days: {1:0,2:0,3:0,4:0,5:0,6:0}, targets: {1:BASE_TARGET,2:BASE_TARGET,3:BASE_TARGET,4:BASE_TARGET,5:BASE_TARGET,6:BASE_TARGET} }; }
+        function update() {
+            let d = new Date().getDay(); if(d===0) d=1;
+            const p = data.days[d], t = data.targets[d], r = t - p;
+            const disp = document.getElementById('targetDisplay'), circ = document.getElementById('targetCircle');
+            if (r <= 0) { disp.innerText = "£"+Math.abs(r).toFixed(0); circ.classList.add('met'); } 
+            else { disp.innerText = "£"+r.toFixed(0); circ.classList.remove('met'); }
+            const bar = document.getElementById('bar'), circum = 130*2*Math.PI;
+            bar.style.strokeDashoffset = circum - (Math.min(p/t, 1) * circum);
+            for (let i=1; i<=6; i++) {
+                const dot = document.getElementById('day-'+i);
+                if (data.days[i] >= data.targets[i] && data.days[i] > 0) dot.className = "day-circle met";
+                else if (data.days[i] > 0) dot.className = "day-circle failed";
+            }
+            localStorage.setItem('garageData', JSON.stringify(data));
+        }
+        function handleSale() {
+            const tot = prompt("Sale (£):"), cst = prompt("Parts (£):");
+            if (tot && cst) { let d = new Date().getDay(); if(d===0) d=1; data.days[d] += (parseFloat(tot) - parseFloat(cst)); update(); }
+        }
+        function handleCost() {
+            const ex = prompt("Extra Cost (£):");
+            if (ex) { let d = new Date().getDay(); if(d===0) d=1; data.targets[d] += parseFloat(ex); update(); }
+        }
+        function getRep() {
+            let tp = 0, tt = 0, msg = "WEEKLY REPORT\n";
+            for (let i=1; i<=6; i++) { tp += data.days[i]; tt += data.targets[i]; }
+            msg += "TOTAL TARGET: £"+tt+"\nPROFIT: £"+tp.toFixed(0)+"\nNET: £"+(tp-tt).toFixed(0);
+            return msg;
+        }
+        function generateReport() { alert(getRep()); }
+        function emailReport() { window.location.href = "mailto:?subject=Garage Report&body=" + encodeURIComponent(getRep()); }
+        update();
+    </script>
+</body>
+</html>
